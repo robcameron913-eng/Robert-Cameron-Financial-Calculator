@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Robert Cameron Financial Calculator</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -14,16 +17,36 @@
     }
 
     .container {
-      max-width: 1000px;
+      max-width: 1100px;
       margin: auto;
       background: white;
-      padding: 25px;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      padding: 30px;
+      border-radius: 14px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.12);
     }
 
-    h1, h2 {
-      color: #1f2937;
+    h1 {
+      color: #0f172a;
+      margin-bottom: 5px;
+    }
+
+    h2 {
+      color: #1e293b;
+      margin-top: 30px;
+    }
+
+    .subtitle {
+      color: #475569;
+      font-size: 18px;
+      margin-bottom: 20px;
+    }
+
+    .note {
+      background: #eef2ff;
+      padding: 15px;
+      border-left: 5px solid #2563eb;
+      margin: 20px 0;
+      border-radius: 6px;
     }
 
     label {
@@ -33,7 +56,7 @@
     }
 
     input, button {
-      padding: 10px;
+      padding: 11px;
       margin-top: 6px;
       width: 100%;
       box-sizing: border-box;
@@ -44,9 +67,10 @@
       background: #2563eb;
       color: white;
       border: none;
-      border-radius: 6px;
-      margin-top: 20px;
+      border-radius: 7px;
+      margin-top: 22px;
       cursor: pointer;
+      font-weight: bold;
     }
 
     button:hover {
@@ -61,7 +85,7 @@
 
     th, td {
       border: 1px solid #ddd;
-      padding: 12px;
+      padding: 13px;
       text-align: center;
     }
 
@@ -69,11 +93,21 @@
       background: #e5e7eb;
     }
 
-    .note {
-      background: #eef2ff;
+    .chart-box {
+      margin-top: 30px;
       padding: 15px;
-      border-left: 5px solid #2563eb;
-      margin-top: 20px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: #ffffff;
+    }
+
+    .interpretation {
+      background: #f8fafc;
+      border-left: 5px solid #16a34a;
+      padding: 15px;
+      margin-top: 25px;
+      border-radius: 6px;
+      line-height: 1.6;
     }
 
     .error {
@@ -81,23 +115,28 @@
       font-weight: bold;
       margin-top: 15px;
     }
+
+    .small {
+      font-size: 14px;
+      color: #64748b;
+    }
   </style>
 </head>
 
 <body>
   <div class="container">
     <h1>Robert Cameron Financial Calculator</h1>
-    <h2>SAIA vs. S&P 500 Risk and Return Analysis</h2>
+    <div class="subtitle">SAIA vs. S&P 500 Risk and Return Analysis</div>
 
     <p>
-      This website compares SAIA, Inc. stock to the S&P 500 using SPY as the market benchmark.
-      The calculator measures return, volatility, beta, correlation, alpha, and Sharpe ratio.
+      This website compares SAIA, Inc. stock to the S&P 500 using SPY as the benchmark.
+      The calculator measures return, volatility, beta, correlation, CAPM alpha, and Sharpe ratio.
     </p>
 
     <div class="note">
       <strong>Project Securities:</strong><br>
       Stock: SAIA, Inc. (SAIA)<br>
-      Benchmark: S&P 500 ETF (SPY)<br>
+      Benchmark: S&P 500 ETF Trust (SPY)<br>
       Assumed annual risk-free rate: 4%
     </div>
 
@@ -105,7 +144,7 @@
     <input type="date" id="startDate" value="2024-01-01">
 
     <label for="endDate">End Date:</label>
-    <input type="date" id="endDate" value="2024-12-31">
+    <input type="date" id="endDate">
 
     <button onclick="runAnalysis()">Calculate Financial Measures</button>
 
@@ -122,30 +161,43 @@
       <tbody id="resultsBody"></tbody>
     </table>
 
+    <div class="chart-box" id="chartBox" style="display:none;">
+      <h2>Growth of $100 Investment</h2>
+      <canvas id="performanceChart"></canvas>
+      <p class="small">
+        This chart shows how $100 invested in SAIA compares to $100 invested in SPY over the selected period.
+      </p>
+    </div>
+
+    <div id="interpretation" class="interpretation" style="display:none;"></div>
+
     <h2>Formula Explanations</h2>
     <p><strong>Holding Period Return:</strong> (Ending Price - Beginning Price) / Beginning Price</p>
-    <p><strong>Annualized Return:</strong> Converts total return into a yearly return.</p>
-    <p><strong>Volatility:</strong> Standard deviation of daily returns, annualized.</p>
-    <p><strong>Beta:</strong> Measures SAIA's risk compared to the market.</p>
+    <p><strong>Annualized Return:</strong> Converts the selected period return into a yearly return.</p>
+    <p><strong>Volatility:</strong> Standard deviation of daily returns, annualized using √252 trading days.</p>
+    <p><strong>Beta:</strong> Measures SAIA's systematic risk compared to the market.</p>
+    <p><strong>Correlation:</strong> Measures how closely SAIA and SPY move together.</p>
     <p><strong>Alpha:</strong> Measures performance above or below what CAPM predicts.</p>
-    <p><strong>Sharpe Ratio:</strong> Risk-adjusted return using volatility.</p>
+    <p><strong>Sharpe Ratio:</strong> Measures risk-adjusted return.</p>
   </div>
 
   <script>
     const riskFreeRate = 0.04;
+    let chart;
+
+    document.getElementById("endDate").value = new Date().toISOString().split("T")[0];
 
     async function fetchStockData(symbol, startDate, endDate) {
       const start = Math.floor(new Date(startDate).getTime() / 1000);
       const end = Math.floor(new Date(endDate).getTime() / 1000);
 
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${start}&period2=${end}&interval=1d`;
-
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+      const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${start}&period2=${end}&interval=1d`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
 
       const response = await fetch(proxyUrl);
       const data = await response.json();
 
-      if (!data.chart || !data.chart.result) {
+      if (!data.chart || !data.chart.result || !data.chart.result[0]) {
         throw new Error("Could not load stock data.");
       }
 
@@ -158,13 +210,30 @@
       for (let i = 0; i < prices.length; i++) {
         if (prices[i] !== null && prices[i] !== undefined) {
           cleanPrices.push({
-            date: new Date(timestamps[i] * 1000),
+            date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
             price: prices[i]
           });
         }
       }
 
       return cleanPrices;
+    }
+
+    function alignData(stockData, marketData) {
+      const marketMap = new Map();
+      marketData.forEach(item => marketMap.set(item.date, item.price));
+
+      let alignedStock = [];
+      let alignedMarket = [];
+
+      stockData.forEach(item => {
+        if (marketMap.has(item.date)) {
+          alignedStock.push({ date: item.date, price: item.price });
+          alignedMarket.push({ date: item.date, price: marketMap.get(item.date) });
+        }
+      });
+
+      return { alignedStock, alignedMarket };
     }
 
     function calculateReturns(priceData) {
@@ -212,11 +281,11 @@
     }
 
     function beta(stockReturns, marketReturns) {
-      return covariance(stockReturns, marketReturns) / Math.pow(standardDeviation(marketReturns), 2);
+      return covariance(stockReturns, marketReturns) / covariance(marketReturns, marketReturns);
     }
 
-    function annualizedReturn(totalReturn, days) {
-      return Math.pow(1 + totalReturn, 365 / days) - 1;
+    function annualizedReturn(totalReturn, tradingDays) {
+      return Math.pow(1 + totalReturn, 252 / tradingDays) - 1;
     }
 
     function sharpeRatio(annualReturn, annualVolatility) {
@@ -236,21 +305,123 @@
       return value.toFixed(2);
     }
 
+    function createGrowthSeries(priceData) {
+      const firstPrice = priceData[0].price;
+      return priceData.map(item => ({
+        date: item.date,
+        value: 100 * (item.price / firstPrice)
+      }));
+    }
+
+    function drawChart(saiaPrices, spyPrices) {
+      const saiaGrowth = createGrowthSeries(saiaPrices);
+      const spyGrowth = createGrowthSeries(spyPrices);
+
+      const labels = saiaGrowth.map(item => item.date);
+      const saiaValues = saiaGrowth.map(item => item.value.toFixed(2));
+      const spyValues = spyGrowth.map(item => item.value.toFixed(2));
+
+      const ctx = document.getElementById("performanceChart").getContext("2d");
+
+      if (chart) {
+        chart.destroy();
+      }
+
+      chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: "SAIA Growth of $100",
+              data: saiaValues,
+              borderWidth: 2,
+              tension: 0.2
+            },
+            {
+              label: "SPY Growth of $100",
+              data: spyValues,
+              borderWidth: 2,
+              tension: 0.2
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: "bottom"
+            }
+          },
+          scales: {
+            y: {
+              title: {
+                display: true,
+                text: "Investment Value ($)"
+              }
+            },
+            x: {
+              ticks: {
+                maxTicksLimit: 8
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function buildInterpretation(saiaHPR, spyHPR, betaValue, correlationValue, alphaValue, saiaSharpe, spySharpe) {
+      let performanceText = saiaHPR > spyHPR
+        ? "SAIA outperformed the S&P 500 over the selected period."
+        : "SAIA underperformed the S&P 500 over the selected period.";
+
+      let betaText = betaValue > 1
+        ? "SAIA had a beta greater than 1, meaning it was more volatile than the market."
+        : "SAIA had a beta less than 1, meaning it was less volatile than the market.";
+
+      let alphaText = alphaValue > 0
+        ? "SAIA produced positive alpha, meaning it performed better than CAPM would predict."
+        : "SAIA produced negative alpha, meaning it performed worse than CAPM would predict.";
+
+      let sharpeText = saiaSharpe > spySharpe
+        ? "SAIA had the stronger Sharpe ratio, meaning it provided better risk-adjusted return."
+        : "SPY had the stronger Sharpe ratio, meaning the market benchmark provided better risk-adjusted return.";
+
+      return `
+        <h2>Interpretation</h2>
+        <p>${performanceText}</p>
+        <p>${betaText}</p>
+        <p>The correlation between SAIA and SPY was ${formatNumber(correlationValue)}, showing how closely SAIA moved with the market during the selected period.</p>
+        <p>${alphaText}</p>
+        <p>${sharpeText}</p>
+      `;
+    }
+
     async function runAnalysis() {
       document.getElementById("error").innerText = "";
       document.getElementById("resultsTable").style.display = "none";
+      document.getElementById("chartBox").style.display = "none";
+      document.getElementById("interpretation").style.display = "none";
 
       const startDate = document.getElementById("startDate").value;
       const endDate = document.getElementById("endDate").value;
+
+      if (new Date(startDate) >= new Date(endDate)) {
+        document.getElementById("error").innerText = "Start date must be before end date.";
+        return;
+      }
 
       try {
         const saiaData = await fetchStockData("SAIA", startDate, endDate);
         const spyData = await fetchStockData("SPY", startDate, endDate);
 
-        const minLength = Math.min(saiaData.length, spyData.length);
+        const aligned = alignData(saiaData, spyData);
+        const saiaPrices = aligned.alignedStock;
+        const spyPrices = aligned.alignedMarket;
 
-        const saiaPrices = saiaData.slice(0, minLength);
-        const spyPrices = spyData.slice(0, minLength);
+        if (saiaPrices.length < 30) {
+          throw new Error("Not enough data for analysis.");
+        }
 
         const saiaReturns = calculateReturns(saiaPrices);
         const spyReturns = calculateReturns(spyPrices);
@@ -258,10 +429,10 @@
         const saiaHPR = holdingPeriodReturn(saiaPrices);
         const spyHPR = holdingPeriodReturn(spyPrices);
 
-        const days = (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
+        const tradingDays = saiaReturns.length;
 
-        const saiaAnnualReturn = annualizedReturn(saiaHPR, days);
-        const spyAnnualReturn = annualizedReturn(spyHPR, days);
+        const saiaAnnualReturn = annualizedReturn(saiaHPR, tradingDays);
+        const spyAnnualReturn = annualizedReturn(spyHPR, tradingDays);
 
         const saiaVolatility = standardDeviation(saiaReturns) * Math.sqrt(252);
         const spyVolatility = standardDeviation(spyReturns) * Math.sqrt(252);
@@ -322,9 +493,17 @@
         document.getElementById("resultsBody").innerHTML = rows;
         document.getElementById("resultsTable").style.display = "table";
 
+        drawChart(saiaPrices, spyPrices);
+        document.getElementById("chartBox").style.display = "block";
+
+        document.getElementById("interpretation").innerHTML =
+          buildInterpretation(saiaHPR, spyHPR, betaValue, correlationValue, alphaValue, saiaSharpe, spySharpe);
+
+        document.getElementById("interpretation").style.display = "block";
+
       } catch (error) {
         document.getElementById("error").innerText =
-          "Data could not be loaded. Try a different date range or refresh the page.";
+          "Data could not be loaded. Try a different date range, refresh the page, or wait a moment and try again.";
       }
     }
   </script>
