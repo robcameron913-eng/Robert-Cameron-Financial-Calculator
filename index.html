@@ -1,1 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robert Cameron Financial Calculator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+      color: #222;
+    }
 
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    h1, h2 {
+      color: #1f2937;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 15px;
+    }
+
+    input, button {
+      padding: 10px;
+      margin-top: 6px;
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 16px;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      margin-top: 20px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 25px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 12px;
+      text-align: center;
+    }
+
+    th {
+      background: #e5e7eb;
+    }
+
+    .note {
+      background: #eef2ff;
+      padding: 15px;
+      border-left: 5px solid #2563eb;
+      margin-top: 20px;
+    }
+
+    .error {
+      color: red;
+      font-weight: bold;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>Robert Cameron Financial Calculator</h1>
+    <h2>SAIA vs. S&P 500 Risk and Return Analysis</h2>
+
+    <p>
+      This website compares SAIA, Inc. stock to the S&P 500 using SPY as the market benchmark.
+      The calculator measures return, volatility, beta, correlation, alpha, and Sharpe ratio.
+    </p>
+
+    <div class="note">
+      <strong>Project Securities:</strong><br>
+      Stock: SAIA, Inc. (SAIA)<br>
+      Benchmark: S&P 500 ETF (SPY)<br>
+      Assumed annual risk-free rate: 4%
+    </div>
+
+    <label for="startDate">Start Date:</label>
+    <input type="date" id="startDate" value="2024-01-01">
+
+    <label for="endDate">End Date:</label>
+    <input type="date" id="endDate" value="2024-12-31">
+
+    <button onclick="runAnalysis()">Calculate Financial Measures</button>
+
+    <p id="error" class="error"></p>
+
+    <table id="resultsTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>Measure</th>
+          <th>SAIA</th>
+          <th>S&P 500 / SPY</th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+
+    <h2>Formula Explanations</h2>
+    <p><strong>Holding Period Return:</strong> (Ending Price - Beginning Price) / Beginning Price</p>
+    <p><strong>Annualized Return:</strong> Converts total return into a yearly return.</p>
+    <p><strong>Volatility:</strong> Standard deviation of daily returns, annualized.</p>
+    <p><strong>Beta:</strong> Measures SAIA's risk compared to the market.</p>
+    <p><strong>Alpha:</strong> Measures performance above or below what CAPM predicts.</p>
+    <p><strong>Sharpe Ratio:</strong> Risk-adjusted return using volatility.</p>
+  </div>
+
+  <script>
+    const riskFreeRate = 0.04;
+
+    async function fetchStockData(symbol, startDate, endDate) {
+      const start = Math.floor(new Date(startDate).getTime() / 1000);
+      const end = Math.floor(new Date(endDate).getTime() / 1000);
+
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${start}&period2=${end}&interval=1d`;
+
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+
+      const response = await fetch(proxyUrl);
+      const data = await response.json();
+
+      if (!data.chart || !data.chart.result) {
+        throw new Error("Could not load stock data.");
+      }
+
+      const result = data.chart.result[0];
+      const timestamps = result.timestamp;
+      const prices = result.indicators.adjclose[0].adjclose;
+
+      let cleanPrices = [];
+
+      for (let i = 0; i < prices.length; i++) {
+        if (prices[i] !== null && prices[i] !== undefined) {
+          cleanPrices.push({
+            date: new Date(timestamps[i] * 1000),
+            price: prices[i]
+          });
+        }
+      }
+
+      return cleanPrices;
+    }
+
+    function calculateReturns(priceData) {
+      let returns = [];
+
+      for (let i = 1; i < priceData.length; i++) {
+        let dailyReturn = (priceData[i].price - priceData[i - 1].price) / priceData[i - 1].price;
+        returns.push(dailyReturn);
+      }
+
+      return returns;
+    }
+
+    function holdingPeriodReturn(priceData) {
+      let firstPrice = priceData[0].price;
+      let lastPrice = priceData[priceData.length - 1].price;
+      return (lastPrice - firstPrice) / firstPrice;
+    }
+
+    function average(array) {
+      return array.reduce((sum, value) => sum + value, 0) / array.length;
+    }
+
+    function standardDeviation(array) {
+      let avg = average(array);
+      let squaredDiffs = array.map(value => Math.pow(value - avg, 2));
+      let variance = squaredDiffs.reduce((sum, value) => sum + value, 0) / (array.length - 1);
+      return Math.sqrt(variance);
+    }
+
+    function covariance(array1, array2) {
+      let avg1 = average(array1);
+      let avg2 = average(array2);
+      let total = 0;
+
+      for (let i = 0; i < array1.length; i++) {
+        total += (array1[i] - avg1) * (array2[i] - avg2);
+      }
+
+      return total / (array1.length - 1);
+    }
+
+    function correlation(array1, array2) {
+      return covariance(array1, array2) / (standardDeviation(array1) * standardDeviation(array2));
+    }
+
+    function beta(stockReturns, marketReturns) {
+      return covariance(stockReturns, marketReturns) / Math.pow(standardDeviation(marketReturns), 2);
+    }
+
+    function annualizedReturn(totalReturn, days) {
+      return Math.pow(1 + totalReturn, 365 / days) - 1;
+    }
+
+    function sharpeRatio(annualReturn, annualVolatility) {
+      return (annualReturn - riskFreeRate) / annualVolatility;
+    }
+
+    function alpha(stockAnnualReturn, marketAnnualReturn, betaValue) {
+      let expectedReturn = riskFreeRate + betaValue * (marketAnnualReturn - riskFreeRate);
+      return stockAnnualReturn - expectedReturn;
+    }
+
+    function formatPercent(value) {
+      return (value * 100).toFixed(2) + "%";
+    }
+
+    function formatNumber(value) {
+      return value.toFixed(2);
+    }
+
+    async function runAnalysis() {
+      document.getElementById("error").innerText = "";
+      document.getElementById("resultsTable").style.display = "none";
+
+      const startDate = document.getElementById("startDate").value;
+      const endDate = document.getElementById("endDate").value;
+
+      try {
+        const saiaData = await fetchStockData("SAIA", startDate, endDate);
+        const spyData = await fetchStockData("SPY", startDate, endDate);
+
+        const minLength = Math.min(saiaData.length, spyData.length);
+
+        const saiaPrices = saiaData.slice(0, minLength);
+        const spyPrices = spyData.slice(0, minLength);
+
+        const saiaReturns = calculateReturns(saiaPrices);
+        const spyReturns = calculateReturns(spyPrices);
+
+        const saiaHPR = holdingPeriodReturn(saiaPrices);
+        const spyHPR = holdingPeriodReturn(spyPrices);
+
+        const days = (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
+
+        const saiaAnnualReturn = annualizedReturn(saiaHPR, days);
+        const spyAnnualReturn = annualizedReturn(spyHPR, days);
+
+        const saiaVolatility = standardDeviation(saiaReturns) * Math.sqrt(252);
+        const spyVolatility = standardDeviation(spyReturns) * Math.sqrt(252);
+
+        const betaValue = beta(saiaReturns, spyReturns);
+        const correlationValue = correlation(saiaReturns, spyReturns);
+
+        const saiaSharpe = sharpeRatio(saiaAnnualReturn, saiaVolatility);
+        const spySharpe = sharpeRatio(spyAnnualReturn, spyVolatility);
+
+        const alphaValue = alpha(saiaAnnualReturn, spyAnnualReturn, betaValue);
+
+        const excessReturn = saiaAnnualReturn - spyAnnualReturn;
+
+        const rows = `
+          <tr>
+            <td>Holding Period Return</td>
+            <td>${formatPercent(saiaHPR)}</td>
+            <td>${formatPercent(spyHPR)}</td>
+          </tr>
+          <tr>
+            <td>Annualized Return</td>
+            <td>${formatPercent(saiaAnnualReturn)}</td>
+            <td>${formatPercent(spyAnnualReturn)}</td>
+          </tr>
+          <tr>
+            <td>Excess Return vs. Market</td>
+            <td>${formatPercent(excessReturn)}</td>
+            <td>Benchmark</td>
+          </tr>
+          <tr>
+            <td>Annualized Volatility</td>
+            <td>${formatPercent(saiaVolatility)}</td>
+            <td>${formatPercent(spyVolatility)}</td>
+          </tr>
+          <tr>
+            <td>Beta</td>
+            <td>${formatNumber(betaValue)}</td>
+            <td>1.00</td>
+          </tr>
+          <tr>
+            <td>Correlation with S&P 500</td>
+            <td>${formatNumber(correlationValue)}</td>
+            <td>1.00</td>
+          </tr>
+          <tr>
+            <td>Alpha Using CAPM</td>
+            <td>${formatPercent(alphaValue)}</td>
+            <td>N/A</td>
+          </tr>
+          <tr>
+            <td>Sharpe Ratio</td>
+            <td>${formatNumber(saiaSharpe)}</td>
+            <td>${formatNumber(spySharpe)}</td>
+          </tr>
+        `;
+
+        document.getElementById("resultsBody").innerHTML = rows;
+        document.getElementById("resultsTable").style.display = "table";
+
+      } catch (error) {
+        document.getElementById("error").innerText =
+          "Data could not be loaded. Try a different date range or refresh the page.";
+      }
+    }
+  </script>
+</body>
+</html>
