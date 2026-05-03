@@ -521,30 +521,46 @@
     }
 
     async function fetchMarketCharacteristics(symbol) {
-      const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`;
+      const yahooUrls = [
+        `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`,
+        `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`
+      ];
 
-      try {
-        const { data } = await fetchJsonWithProxy(yahooUrl);
+      for (const yahooUrl of yahooUrls) {
+        try {
+          const { data } = await fetchJsonWithProxy(yahooUrl);
 
-        if (!data.quoteResponse || !data.quoteResponse.result || !data.quoteResponse.result[0]) {
-          throw new Error("Quote data unavailable.");
+          if (
+            data.quoteResponse &&
+            data.quoteResponse.result &&
+            data.quoteResponse.result.length > 0
+          ) {
+            const quote = data.quoteResponse.result[0];
+
+            return {
+              marketCap: quote.marketCap ?? null,
+              peRatio: quote.trailingPE ?? quote.forwardPE ?? null,
+              dividendYield:
+                quote.trailingAnnualDividendYield ??
+                quote.dividendYield ??
+                null
+            };
+          }
+        } catch (error) {
+          console.warn(`${symbol} quote lookup failed:`, error);
         }
-
-        const quote = data.quoteResponse.result[0];
-
-        return {
-          marketCap: quote.marketCap || null,
-          peRatio: quote.trailingPE || null,
-          dividendYield: quote.trailingAnnualDividendYield || quote.dividendYield || null
-        };
-      } catch (error) {
-        console.warn(`${symbol} market characteristics unavailable:`, error);
-        return {
-          marketCap: null,
-          peRatio: null,
-          dividendYield: null
-        };
       }
+
+      return {
+        marketCap: null,
+        peRatio: null,
+        dividendYield: null
+      };
+    }
+
+    function normalizeDividendYield(value) {
+      if (value === null || value === undefined || isNaN(value)) return null;
+      return value > 1 ? value / 100 : value;
     }
 
     function alignData(stockData, marketData) {
@@ -935,7 +951,7 @@
         document.getElementById("marketBody").innerHTML = `
           <tr><td>Market Capitalization</td><td>${formatMarketCap(saiaMarketInfo.marketCap)}</td><td>${formatMarketCap(spyMarketInfo.marketCap)}</td></tr>
           <tr><td>Price-to-Earnings Ratio</td><td>${formatNumber(saiaMarketInfo.peRatio)}</td><td>${formatNumber(spyMarketInfo.peRatio)}</td></tr>
-          <tr><td>Dividend Yield</td><td>${formatPercent(saiaMarketInfo.dividendYield)}</td><td>${formatPercent(spyMarketInfo.dividendYield)}</td></tr>
+          <tr><td>Dividend Yield</td><td>${formatPercent(normalizeDividendYield(saiaMarketInfo.dividendYield))}</td><td>${formatPercent(normalizeDividendYield(spyMarketInfo.dividendYield))}</td></tr>
           <tr><td>Book-to-Market Ratio</td><td>N/A - not reliably available from free Yahoo chart API</td><td>N/A - not reliably available from free Yahoo chart API</td></tr>
         `;
 
