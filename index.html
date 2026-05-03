@@ -17,7 +17,7 @@
     }
 
     .container {
-      max-width: 1150px;
+      max-width: 1200px;
       margin: auto;
       background: white;
       padding: 35px;
@@ -76,6 +76,13 @@
       grid-template-columns: 1fr 1fr;
       gap: 18px;
       margin-top: 20px;
+    }
+
+    .portfolio-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 15px;
     }
 
     label {
@@ -214,7 +221,8 @@
         grid-template-columns: 1fr 1fr;
       }
 
-      .input-grid {
+      .input-grid,
+      .portfolio-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -238,12 +246,13 @@
 <body>
   <div class="container">
     <h1>Robert Cameron Financial Calculator</h1>
-    <div class="subtitle">SAIA vs. S&P 500 Risk and Return Analysis</div>
+    <div class="subtitle">SAIA vs. S&P 500 Risk, Return, Market Characteristics, and Portfolio Analysis</div>
 
     <p>
       This website compares SAIA, Inc. stock to the S&P 500 using SPY as the market benchmark.
-      The calculator uses historical price data to calculate return, volatility, beta,
-      correlation, CAPM alpha, and Sharpe ratio.
+      The calculator uses historical price data to calculate holding-period return, annualized return,
+      excess return, volatility, beta, correlation, CAPM alpha, Sharpe ratio, Treynor ratio,
+      and a simple weighted portfolio return.
     </p>
 
     <div class="note">
@@ -254,12 +263,15 @@
 
       <div class="source-box">
         <strong>Data Source:</strong><br>
-        Market data is sourced from Yahoo Finance historical price data.<br>
-        <a id="saiaLink" href="https://finance.yahoo.com/quote/SAIA/history/" target="_blank">View SAIA Data</a>
+        Historical market data is retrieved from Yahoo Finance.<br>
+        Market characteristics are retrieved from Yahoo Finance summary data when available.<br>
+        <a id="saiaLink" href="https://finance.yahoo.com/quote/SAIA/history/" target="_blank">View SAIA Historical Data</a>
         |
-        <a id="spyLink" href="https://finance.yahoo.com/quote/SPY/history/" target="_blank">View S&P 500 / SPY Data</a>
+        <a id="spyLink" href="https://finance.yahoo.com/quote/SPY/history/" target="_blank">View SPY Historical Data</a>
       </div>
     </div>
+
+    <h2>Inputs</h2>
 
     <div class="input-grid">
       <div>
@@ -270,6 +282,23 @@
       <div>
         <label for="endDate">End Date:</label>
         <input type="date" id="endDate">
+      </div>
+    </div>
+
+    <h2>Simple Portfolio Weights</h2>
+    <p class="small">
+      Enter the percentage allocation for SAIA and SPY. The two weights should total 100%.
+    </p>
+
+    <div class="portfolio-grid">
+      <div>
+        <label for="saiaWeight">SAIA Weight %:</label>
+        <input type="number" id="saiaWeight" value="50" min="0" max="100">
+      </div>
+
+      <div>
+        <label for="spyWeight">SPY Weight %:</label>
+        <input type="number" id="spyWeight" value="50" min="0" max="100">
       </div>
     </div>
 
@@ -292,8 +321,8 @@
         <div class="card-value" id="cardBeta"></div>
       </div>
       <div class="card">
-        <div class="card-title">SAIA Sharpe</div>
-        <div class="card-value" id="cardSharpe"></div>
+        <div class="card-title">Portfolio Return</div>
+        <div class="card-value" id="cardPortfolioReturn"></div>
       </div>
     </div>
 
@@ -306,6 +335,29 @@
         </tr>
       </thead>
       <tbody id="resultsBody"></tbody>
+    </table>
+
+    <table id="marketTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>Market Characteristic</th>
+          <th>SAIA</th>
+          <th>SPY</th>
+        </tr>
+      </thead>
+      <tbody id="marketBody"></tbody>
+    </table>
+
+    <table id="portfolioTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>Portfolio Component</th>
+          <th>Weight</th>
+          <th>Holding-Period Return</th>
+          <th>Weighted Contribution</th>
+        </tr>
+      </thead>
+      <tbody id="portfolioBody"></tbody>
     </table>
 
     <div id="charts" class="chart-grid" style="display:none;">
@@ -336,11 +388,14 @@
     <div class="formula-box">
       <p><strong>Holding Period Return:</strong> (Ending Price - Beginning Price) / Beginning Price</p>
       <p><strong>Annualized Return:</strong> Converts the selected period return into a yearly return.</p>
+      <p><strong>Excess Return:</strong> SAIA annualized return minus SPY annualized return.</p>
       <p><strong>Volatility:</strong> Standard deviation of daily returns, annualized using √252 trading days.</p>
-      <p><strong>Beta:</strong> Measures SAIA's systematic risk compared to the market.</p>
+      <p><strong>Beta:</strong> Covariance of SAIA returns and market returns divided by variance of market returns.</p>
       <p><strong>Correlation:</strong> Measures how closely SAIA and SPY move together.</p>
-      <p><strong>Alpha:</strong> Measures performance above or below what CAPM predicts.</p>
-      <p><strong>Sharpe Ratio:</strong> Measures risk-adjusted return.</p>
+      <p><strong>Alpha:</strong> Actual annualized return minus expected return under CAPM.</p>
+      <p><strong>Sharpe Ratio:</strong> (Annualized return - risk-free rate) / annualized volatility.</p>
+      <p><strong>Treynor Ratio:</strong> (Annualized return - risk-free rate) / beta.</p>
+      <p><strong>Portfolio Return:</strong> Weighted average return of SAIA and SPY.</p>
     </div>
   </div>
 
@@ -400,6 +455,34 @@
       }
 
       return cleanPrices;
+    }
+
+    async function fetchMarketCharacteristics(symbol) {
+      const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
+
+      try {
+        const response = await fetch(proxyUrl);
+
+        if (!response.ok) {
+          throw new Error("Market characteristics unavailable.");
+        }
+
+        const data = await response.json();
+        const quote = data.quoteResponse.result[0];
+
+        return {
+          marketCap: quote.marketCap || null,
+          peRatio: quote.trailingPE || null,
+          dividendYield: quote.trailingAnnualDividendYield || quote.dividendYield || null
+        };
+      } catch (error) {
+        return {
+          marketCap: null,
+          peRatio: null,
+          dividendYield: null
+        };
+      }
     }
 
     function alignData(stockData, marketData) {
@@ -472,17 +555,45 @@
       return (annualReturn - riskFreeRate) / annualVolatility;
     }
 
+    function treynorRatio(annualReturn, betaValue) {
+      return (annualReturn - riskFreeRate) / betaValue;
+    }
+
     function alpha(stockAnnualReturn, marketAnnualReturn, betaValue) {
       const expectedReturn = riskFreeRate + betaValue * (marketAnnualReturn - riskFreeRate);
       return stockAnnualReturn - expectedReturn;
     }
 
+    function portfolioReturn(saiaReturn, spyReturn, saiaWeight, spyWeight) {
+      return (saiaReturn * saiaWeight) + (spyReturn * spyWeight);
+    }
+
     function formatPercent(value) {
+      if (value === null || value === undefined || isNaN(value)) return "N/A";
       return (value * 100).toFixed(2) + "%";
     }
 
     function formatNumber(value) {
+      if (value === null || value === undefined || isNaN(value)) return "N/A";
       return value.toFixed(2);
+    }
+
+    function formatMarketCap(value) {
+      if (!value) return "N/A";
+
+      if (value >= 1_000_000_000_000) {
+        return "$" + (value / 1_000_000_000_000).toFixed(2) + "T";
+      }
+
+      if (value >= 1_000_000_000) {
+        return "$" + (value / 1_000_000_000).toFixed(2) + "B";
+      }
+
+      if (value >= 1_000_000) {
+        return "$" + (value / 1_000_000).toFixed(2) + "M";
+      }
+
+      return "$" + value.toLocaleString();
     }
 
     function createGrowthSeries(priceData) {
@@ -604,7 +715,7 @@
       });
     }
 
-    function buildInterpretation(saiaHPR, spyHPR, betaValue, correlationValue, alphaValue, saiaSharpe, spySharpe) {
+    function buildInterpretation(saiaHPR, spyHPR, betaValue, correlationValue, alphaValue, saiaSharpe, spySharpe, portfolioHPR) {
       const performanceText = saiaHPR > spyHPR
         ? "SAIA outperformed the S&P 500 over the selected period."
         : "SAIA underperformed the S&P 500 over the selected period.";
@@ -629,11 +740,12 @@
         <h2>Interpretation</h2>
         <p>${performanceText}</p>
         <p>${betaText}</p>
-        <p>The correlation between SAIA and SPY was ${formatNumber(correlationValue)}, indicating a moderate relationship with the market.</p>
+        <p>The correlation between SAIA and SPY was ${formatNumber(correlationValue)}, indicating the degree to which SAIA moved with the market.</p>
         <p>${alphaText}</p>
         <p>${sharpeText}</p>
         <p>${riskText}</p>
-        <p><strong>Conclusion:</strong> Over this period, SAIA exposed investors to significantly higher volatility without necessarily delivering superior risk-adjusted returns.</p>
+        <p>The weighted portfolio return for the selected allocation was <strong>${formatPercent(portfolioHPR)}</strong>.</p>
+        <p><strong>Conclusion:</strong> This analysis shows that higher volatility does not automatically lead to higher returns. Risk-adjusted measures such as Sharpe ratio, Treynor ratio, beta, and alpha help determine whether a stock’s return adequately compensates investors for the risk taken.</p>
       `;
     }
 
@@ -643,6 +755,8 @@
       document.getElementById("error").innerText = "";
       document.getElementById("warning").innerText = "";
       document.getElementById("resultsTable").style.display = "none";
+      document.getElementById("marketTable").style.display = "none";
+      document.getElementById("portfolioTable").style.display = "none";
       document.getElementById("summaryCards").style.display = "none";
       document.getElementById("charts").style.display = "none";
       document.getElementById("interpretation").style.display = "none";
@@ -650,10 +764,21 @@
       const startDate = document.getElementById("startDate").value;
       const endDate = document.getElementById("endDate").value;
 
+      const saiaWeightPercent = Number(document.getElementById("saiaWeight").value);
+      const spyWeightPercent = Number(document.getElementById("spyWeight").value);
+
+      const saiaWeight = saiaWeightPercent / 100;
+      const spyWeight = spyWeightPercent / 100;
+
       updateDataLinks(startDate, endDate);
 
       if (new Date(startDate) >= new Date(endDate)) {
         document.getElementById("error").innerText = "Start date must be before end date.";
+        return;
+      }
+
+      if (Math.round((saiaWeight + spyWeight) * 100) !== 100) {
+        document.getElementById("error").innerText = "Portfolio weights must total 100%.";
         return;
       }
 
@@ -663,6 +788,9 @@
       try {
         const saiaData = await fetchStockData("SAIA", startDate, endDate);
         const spyData = await fetchStockData("SPY", startDate, endDate);
+
+        const saiaMarketInfo = await fetchMarketCharacteristics("SAIA");
+        const spyMarketInfo = await fetchMarketCharacteristics("SPY");
 
         const aligned = alignData(saiaData, spyData);
         const saiaPrices = aligned.alignedStock;
@@ -697,13 +825,18 @@
         const saiaSharpe = sharpeRatio(saiaAnnualReturn, saiaVolatility);
         const spySharpe = sharpeRatio(spyAnnualReturn, spyVolatility);
 
+        const saiaTreynor = treynorRatio(saiaAnnualReturn, betaValue);
+        const spyTreynor = treynorRatio(spyAnnualReturn, 1);
+
         const alphaValue = alpha(saiaAnnualReturn, spyAnnualReturn, betaValue);
         const excessReturn = saiaAnnualReturn - spyAnnualReturn;
+
+        const portfolioHPR = portfolioReturn(saiaHPR, spyHPR, saiaWeight, spyWeight);
 
         document.getElementById("cardSaiaReturn").innerText = formatPercent(saiaHPR);
         document.getElementById("cardSpyReturn").innerText = formatPercent(spyHPR);
         document.getElementById("cardBeta").innerText = formatNumber(betaValue);
-        document.getElementById("cardSharpe").innerText = formatNumber(saiaSharpe);
+        document.getElementById("cardPortfolioReturn").innerText = formatPercent(portfolioHPR);
 
         document.getElementById("resultsBody").innerHTML = `
           <tr><td>Holding Period Return</td><td>${formatPercent(saiaHPR)}</td><td>${formatPercent(spyHPR)}</td></tr>
@@ -714,17 +847,48 @@
           <tr><td>Correlation with S&P 500</td><td>${formatNumber(correlationValue)}</td><td>1.00</td></tr>
           <tr><td>Alpha Using CAPM</td><td>${formatPercent(alphaValue)}</td><td>N/A</td></tr>
           <tr><td>Sharpe Ratio</td><td>${formatNumber(saiaSharpe)}</td><td>${formatNumber(spySharpe)}</td></tr>
+          <tr><td>Treynor Ratio</td><td>${formatPercent(saiaTreynor)}</td><td>${formatPercent(spyTreynor)}</td></tr>
+        `;
+
+        document.getElementById("marketBody").innerHTML = `
+          <tr><td>Market Capitalization</td><td>${formatMarketCap(saiaMarketInfo.marketCap)}</td><td>${formatMarketCap(spyMarketInfo.marketCap)}</td></tr>
+          <tr><td>Price-to-Earnings Ratio</td><td>${formatNumber(saiaMarketInfo.peRatio)}</td><td>${formatNumber(spyMarketInfo.peRatio)}</td></tr>
+          <tr><td>Dividend Yield</td><td>${formatPercent(saiaMarketInfo.dividendYield)}</td><td>${formatPercent(spyMarketInfo.dividendYield)}</td></tr>
+          <tr><td>Book-to-Market Ratio</td><td>N/A - not reliably available from free price API</td><td>N/A - not reliably available from free price API</td></tr>
+        `;
+
+        document.getElementById("portfolioBody").innerHTML = `
+          <tr>
+            <td>SAIA</td>
+            <td>${saiaWeightPercent.toFixed(2)}%</td>
+            <td>${formatPercent(saiaHPR)}</td>
+            <td>${formatPercent(saiaHPR * saiaWeight)}</td>
+          </tr>
+          <tr>
+            <td>SPY</td>
+            <td>${spyWeightPercent.toFixed(2)}%</td>
+            <td>${formatPercent(spyHPR)}</td>
+            <td>${formatPercent(spyHPR * spyWeight)}</td>
+          </tr>
+          <tr>
+            <td><strong>Total Portfolio</strong></td>
+            <td><strong>100.00%</strong></td>
+            <td>N/A</td>
+            <td><strong>${formatPercent(portfolioHPR)}</strong></td>
+          </tr>
         `;
 
         document.getElementById("summaryCards").style.display = "grid";
         document.getElementById("resultsTable").style.display = "table";
+        document.getElementById("marketTable").style.display = "table";
+        document.getElementById("portfolioTable").style.display = "table";
         document.getElementById("charts").style.display = "grid";
 
         drawPerformanceChart(saiaPrices, spyPrices);
         drawReturnsChart(saiaPrices, spyPrices);
 
         document.getElementById("interpretation").innerHTML =
-          buildInterpretation(saiaHPR, spyHPR, betaValue, correlationValue, alphaValue, saiaSharpe, spySharpe);
+          buildInterpretation(saiaHPR, spyHPR, betaValue, correlationValue, alphaValue, saiaSharpe, spySharpe, portfolioHPR);
 
         document.getElementById("interpretation").style.display = "block";
 
