@@ -71,18 +71,12 @@
       text-decoration: underline;
     }
 
-    .input-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 18px;
-      margin-top: 20px;
-    }
-
+    .input-grid,
     .portfolio-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 18px;
-      margin-top: 15px;
+      margin-top: 20px;
     }
 
     label {
@@ -127,6 +121,12 @@
 
     .error {
       color: red;
+      font-weight: bold;
+      margin-top: 14px;
+    }
+
+    .success {
+      color: #15803d;
       font-weight: bold;
       margin-top: 14px;
     }
@@ -216,6 +216,18 @@
       color: #64748b;
     }
 
+    .debug-box {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 15px;
+      font-size: 13px;
+      color: #7c2d12;
+      display: none;
+      white-space: pre-wrap;
+    }
+
     @media (max-width: 850px) {
       .cards {
         grid-template-columns: 1fr 1fr;
@@ -246,10 +258,10 @@
 <body>
   <div class="container">
     <h1>Robert Cameron Financial Calculator</h1>
-    <div class="subtitle">SAIA vs. S&P 500 Risk, Return, Market Characteristics, and Portfolio Analysis</div>
+    <div class="subtitle">SAIA vs. S&amp;P 500 Risk, Return, Market Characteristics, and Portfolio Analysis</div>
 
     <p>
-      This website compares SAIA, Inc. stock to the S&P 500 using SPY as the market benchmark.
+      This website compares SAIA, Inc. stock to the S&amp;P 500 using SPY as the market benchmark.
       The calculator uses historical price data to calculate holding-period return, annualized return,
       excess return, volatility, beta, correlation, CAPM alpha, Sharpe ratio, Treynor ratio,
       and a simple weighted portfolio return.
@@ -258,13 +270,13 @@
     <div class="note">
       <strong>Project Securities:</strong><br>
       Stock: SAIA, Inc. (SAIA)<br>
-      Benchmark: S&P 500 ETF Trust (SPY)<br>
+      Benchmark: S&amp;P 500 ETF Trust (SPY)<br>
       Assumed annual risk-free rate: 4%
 
       <div class="source-box">
         <strong>Data Source:</strong><br>
-        Historical market data is retrieved from Yahoo Finance.<br>
-        Market characteristics are retrieved from Yahoo Finance summary data when available.<br>
+        Historical market data is retrieved from Yahoo Finance chart data through a public CORS proxy.<br>
+        Market characteristics are retrieved from Yahoo Finance quote summary data when available.<br>
         <a id="saiaLink" href="https://finance.yahoo.com/quote/SAIA/history/" target="_blank">View SAIA Historical Data</a>
         |
         <a id="spyLink" href="https://finance.yahoo.com/quote/SPY/history/" target="_blank">View SPY Historical Data</a>
@@ -276,12 +288,12 @@
     <div class="input-grid">
       <div>
         <label for="startDate">Start Date:</label>
-        <input type="date" id="startDate" value="2025-01-01">
+        <input type="date" id="startDate" value="2025-05-01">
       </div>
 
       <div>
         <label for="endDate">End Date:</label>
-        <input type="date" id="endDate">
+        <input type="date" id="endDate" value="2026-04-30">
       </div>
     </div>
 
@@ -304,8 +316,10 @@
 
     <button id="calcButton" onclick="runAnalysis()">Calculate Financial Measures</button>
 
+    <p id="status" class="success"></p>
     <p id="warning" class="warning"></p>
     <p id="error" class="error"></p>
+    <div id="debugBox" class="debug-box"></div>
 
     <div id="summaryCards" class="cards" style="display:none;">
       <div class="card">
@@ -331,7 +345,7 @@
         <tr>
           <th>Measure</th>
           <th>SAIA</th>
-          <th>S&P 500 / SPY</th>
+          <th>S&amp;P 500 / SPY</th>
         </tr>
       </thead>
       <tbody id="resultsBody"></tbody>
@@ -375,10 +389,6 @@
         <p class="small">
           This chart compares daily returns. Larger swings indicate higher volatility.
         </p>
-        <p class="small">
-          This analysis demonstrates how higher volatility does not necessarily lead to higher returns,
-          reinforcing the importance of risk-adjusted performance measures.
-        </p>
       </div>
     </div>
 
@@ -387,7 +397,7 @@
     <h2>Formula Explanations</h2>
     <div class="formula-box">
       <p><strong>Holding Period Return:</strong> (Ending Price - Beginning Price) / Beginning Price</p>
-      <p><strong>Annualized Return:</strong> Converts the selected period return into a yearly return.</p>
+      <p><strong>Annualized Return:</strong> Converts the selected-period return into a yearly return.</p>
       <p><strong>Excess Return:</strong> SAIA annualized return minus SPY annualized return.</p>
       <p><strong>Volatility:</strong> Standard deviation of daily returns, annualized using √252 trading days.</p>
       <p><strong>Beta:</strong> Covariance of SAIA returns and market returns divided by variance of market returns.</p>
@@ -404,11 +414,20 @@
     let performanceChart;
     let returnsChart;
 
-    document.getElementById("endDate").value = new Date().toISOString().split("T")[0];
+    function getUnixSeconds(dateString) {
+      return Math.floor(new Date(dateString + "T00:00:00").getTime() / 1000);
+    }
+
+    function getYahooEndUnixSeconds(dateString) {
+      // Yahoo period2 is exclusive, so add one calendar day to include the selected end date.
+      const date = new Date(dateString + "T00:00:00");
+      date.setDate(date.getDate() + 1);
+      return Math.floor(date.getTime() / 1000);
+    }
 
     function updateDataLinks(startDate, endDate) {
-      const start = Math.floor(new Date(startDate).getTime() / 1000);
-      const end = Math.floor(new Date(endDate).getTime() / 1000);
+      const start = getUnixSeconds(startDate);
+      const end = getYahooEndUnixSeconds(endDate);
 
       document.getElementById("saiaLink").href =
         `https://finance.yahoo.com/quote/SAIA/history/?period1=${start}&period2=${end}`;
@@ -417,41 +436,85 @@
         `https://finance.yahoo.com/quote/SPY/history/?period1=${start}&period2=${end}`;
     }
 
-    async function fetchStockData(symbol, startDate, endDate) {
-      const start = Math.floor(new Date(startDate).getTime() / 1000);
-      const end = Math.floor(new Date(endDate).getTime() / 1000);
+    async function fetchJsonWithProxy(originalUrl) {
+      const proxyUrls = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(originalUrl)}`,
+        `https://corsproxy.io/?${encodeURIComponent(originalUrl)}`,
+        `https://thingproxy.freeboard.io/fetch/${originalUrl}`
+      ];
 
-      const yahooUrl =
-        `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${start}&period2=${end}&interval=1d`;
+      let errors = [];
 
-      const proxyUrl =
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
+      for (const proxyUrl of proxyUrls) {
+        try {
+          const response = await fetch(proxyUrl, { cache: "no-store" });
 
-      const response = await fetch(proxyUrl);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
 
-      if (!response.ok) {
-        throw new Error("Network response was not successful.");
+          const text = await response.text();
+          const data = JSON.parse(text);
+          return { data, proxyUsed: proxyUrl };
+        } catch (error) {
+          errors.push(`${proxyUrl}: ${error.message}`);
+          console.warn("Proxy failed:", proxyUrl, error);
+        }
       }
 
-      const data = await response.json();
+      throw new Error("All proxy attempts failed. " + errors.join(" | "));
+    }
+
+    async function fetchStockData(symbol, startDate, endDate) {
+      const start = getUnixSeconds(startDate);
+      const end = getYahooEndUnixSeconds(endDate);
+
+      const yahooUrl =
+        `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${start}&period2=${end}&interval=1d&events=history&includeAdjustedClose=true`;
+
+      const { data } = await fetchJsonWithProxy(yahooUrl);
 
       if (!data.chart || !data.chart.result || !data.chart.result[0]) {
-        throw new Error("Could not load stock data.");
+        const description = data.chart && data.chart.error && data.chart.error.description
+          ? data.chart.error.description
+          : "Yahoo returned no chart data.";
+        throw new Error(`${symbol}: ${description}`);
       }
 
       const result = data.chart.result[0];
       const timestamps = result.timestamp;
-      const prices = result.indicators.adjclose[0].adjclose;
+
+      const adjClose =
+        result.indicators &&
+        result.indicators.adjclose &&
+        result.indicators.adjclose[0] &&
+        result.indicators.adjclose[0].adjclose;
+
+      const close =
+        result.indicators &&
+        result.indicators.quote &&
+        result.indicators.quote[0] &&
+        result.indicators.quote[0].close;
+
+      const prices = adjClose || close;
+
+      if (!timestamps || !prices || prices.length === 0) {
+        throw new Error(`${symbol}: No usable price data returned.`);
+      }
 
       let cleanPrices = [];
 
       for (let i = 0; i < prices.length; i++) {
-        if (prices[i] !== null && prices[i] !== undefined) {
+        if (prices[i] !== null && prices[i] !== undefined && !Number.isNaN(prices[i])) {
           cleanPrices.push({
             date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
-            price: prices[i]
+            price: Number(prices[i])
           });
         }
+      }
+
+      if (cleanPrices.length < 2) {
+        throw new Error(`${symbol}: Not enough clean price data.`);
       }
 
       return cleanPrices;
@@ -459,16 +522,14 @@
 
     async function fetchMarketCharacteristics(symbol) {
       const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`;
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
 
       try {
-        const response = await fetch(proxyUrl);
+        const { data } = await fetchJsonWithProxy(yahooUrl);
 
-        if (!response.ok) {
-          throw new Error("Market characteristics unavailable.");
+        if (!data.quoteResponse || !data.quoteResponse.result || !data.quoteResponse.result[0]) {
+          throw new Error("Quote data unavailable.");
         }
 
-        const data = await response.json();
         const quote = data.quoteResponse.result[0];
 
         return {
@@ -477,6 +538,7 @@
           dividendYield: quote.trailingAnnualDividendYield || quote.dividendYield || null
         };
       } catch (error) {
+        console.warn(`${symbol} market characteristics unavailable:`, error);
         return {
           marketCap: null,
           peRatio: null,
@@ -506,21 +568,23 @@
       let returns = [];
 
       for (let i = 1; i < priceData.length; i++) {
-        returns.push((priceData[i].price - priceData[i - 1].price) / priceData[i - 1].price);
+        returns.push((priceData[i].price / priceData[i - 1].price) - 1);
       }
 
       return returns;
     }
 
     function holdingPeriodReturn(priceData) {
-      return (priceData[priceData.length - 1].price - priceData[0].price) / priceData[0].price;
+      return (priceData[priceData.length - 1].price / priceData[0].price) - 1;
     }
 
     function average(array) {
+      if (!array.length) return NaN;
       return array.reduce((sum, value) => sum + value, 0) / array.length;
     }
 
     function standardDeviation(array) {
+      if (array.length < 2) return NaN;
       const avg = average(array);
       const squaredDiffs = array.map(value => Math.pow(value - avg, 2));
       const variance = squaredDiffs.reduce((sum, value) => sum + value, 0) / (array.length - 1);
@@ -528,6 +592,8 @@
     }
 
     function covariance(array1, array2) {
+      if (array1.length !== array2.length || array1.length < 2) return NaN;
+
       const avg1 = average(array1);
       const avg2 = average(array2);
       let total = 0;
@@ -749,17 +815,24 @@
       `;
     }
 
-    async function runAnalysis() {
-      const calcButton = document.getElementById("calcButton");
-
-      document.getElementById("error").innerText = "";
-      document.getElementById("warning").innerText = "";
+    function hideResults() {
       document.getElementById("resultsTable").style.display = "none";
       document.getElementById("marketTable").style.display = "none";
       document.getElementById("portfolioTable").style.display = "none";
       document.getElementById("summaryCards").style.display = "none";
       document.getElementById("charts").style.display = "none";
       document.getElementById("interpretation").style.display = "none";
+      document.getElementById("debugBox").style.display = "none";
+      document.getElementById("debugBox").innerText = "";
+    }
+
+    async function runAnalysis() {
+      const calcButton = document.getElementById("calcButton");
+
+      document.getElementById("status").innerText = "";
+      document.getElementById("error").innerText = "";
+      document.getElementById("warning").innerText = "";
+      hideResults();
 
       const startDate = document.getElementById("startDate").value;
       const endDate = document.getElementById("endDate").value;
@@ -772,7 +845,7 @@
 
       updateDataLinks(startDate, endDate);
 
-      if (new Date(startDate) >= new Date(endDate)) {
+      if (new Date(startDate + "T00:00:00") >= new Date(endDate + "T00:00:00")) {
         document.getElementById("error").innerText = "Start date must be before end date.";
         return;
       }
@@ -786,24 +859,31 @@
       calcButton.disabled = true;
 
       try {
-        const saiaData = await fetchStockData("SAIA", startDate, endDate);
-        const spyData = await fetchStockData("SPY", startDate, endDate);
+        const [saiaData, spyData] = await Promise.all([
+          fetchStockData("SAIA", startDate, endDate),
+          fetchStockData("SPY", startDate, endDate)
+        ]);
 
-        const saiaMarketInfo = await fetchMarketCharacteristics("SAIA");
-        const spyMarketInfo = await fetchMarketCharacteristics("SPY");
+        const [saiaMarketInfo, spyMarketInfo] = await Promise.all([
+          fetchMarketCharacteristics("SAIA"),
+          fetchMarketCharacteristics("SPY")
+        ]);
 
         const aligned = alignData(saiaData, spyData);
         const saiaPrices = aligned.alignedStock;
         const spyPrices = aligned.alignedMarket;
 
-        if (saiaPrices.length < 30) {
-          throw new Error("Not enough data for analysis.");
+        if (saiaPrices.length < 30 || spyPrices.length < 30) {
+          throw new Error("Not enough aligned data for analysis. Choose a longer date range.");
         }
 
         const saiaReturns = calculateReturns(saiaPrices);
         const spyReturns = calculateReturns(spyPrices);
 
         const tradingDays = saiaReturns.length;
+
+        document.getElementById("status").innerText =
+          `Loaded ${saiaPrices.length} aligned trading prices from ${saiaPrices[0].date} through ${saiaPrices[saiaPrices.length - 1].date}.`;
 
         if (tradingDays < 60) {
           document.getElementById("warning").innerText =
@@ -839,6 +919,8 @@
         document.getElementById("cardPortfolioReturn").innerText = formatPercent(portfolioHPR);
 
         document.getElementById("resultsBody").innerHTML = `
+          <tr><td>Beginning Price</td><td>$${saiaPrices[0].price.toFixed(2)}</td><td>$${spyPrices[0].price.toFixed(2)}</td></tr>
+          <tr><td>Ending Price</td><td>$${saiaPrices[saiaPrices.length - 1].price.toFixed(2)}</td><td>$${spyPrices[spyPrices.length - 1].price.toFixed(2)}</td></tr>
           <tr><td>Holding Period Return</td><td>${formatPercent(saiaHPR)}</td><td>${formatPercent(spyHPR)}</td></tr>
           <tr><td>Annualized Return</td><td>${formatPercent(saiaAnnualReturn)}</td><td>${formatPercent(spyAnnualReturn)}</td></tr>
           <tr><td>Excess Return vs. Market</td><td>${formatPercent(excessReturn)}</td><td>Benchmark</td></tr>
@@ -854,7 +936,7 @@
           <tr><td>Market Capitalization</td><td>${formatMarketCap(saiaMarketInfo.marketCap)}</td><td>${formatMarketCap(spyMarketInfo.marketCap)}</td></tr>
           <tr><td>Price-to-Earnings Ratio</td><td>${formatNumber(saiaMarketInfo.peRatio)}</td><td>${formatNumber(spyMarketInfo.peRatio)}</td></tr>
           <tr><td>Dividend Yield</td><td>${formatPercent(saiaMarketInfo.dividendYield)}</td><td>${formatPercent(spyMarketInfo.dividendYield)}</td></tr>
-          <tr><td>Book-to-Market Ratio</td><td>N/A - not reliably available from free price API</td><td>N/A - not reliably available from free price API</td></tr>
+          <tr><td>Book-to-Market Ratio</td><td>N/A - not reliably available from free Yahoo chart API</td><td>N/A - not reliably available from free Yahoo chart API</td></tr>
         `;
 
         document.getElementById("portfolioBody").innerHTML = `
@@ -891,10 +973,14 @@
           buildInterpretation(saiaHPR, spyHPR, betaValue, correlationValue, alphaValue, saiaSharpe, spySharpe, portfolioHPR);
 
         document.getElementById("interpretation").style.display = "block";
-
       } catch (error) {
+        console.error(error);
         document.getElementById("error").innerText =
-          "Data could not be loaded. Try using the last completed trading day as the end date, refresh the page, or click calculate again.";
+          "Data could not be loaded: " + error.message;
+
+        document.getElementById("debugBox").style.display = "block";
+        document.getElementById("debugBox").innerText =
+          "Troubleshooting note: The formulas may be correct, but the free Yahoo Finance CORS proxy may be temporarily unavailable or blocked. Try refreshing, clicking Calculate again, or using a different browser/network.";
       } finally {
         calcButton.innerText = "Calculate Financial Measures";
         calcButton.disabled = false;
@@ -903,3 +989,4 @@
   </script>
 </body>
 </html>
+
